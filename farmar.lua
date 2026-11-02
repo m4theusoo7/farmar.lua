@@ -1,9 +1,17 @@
-print("████ FRUIT SNIPER (VERSÃO ULTRA - INTEGRAL) █████")
+print("████ FRUIT SNIPER (VERSÃO FINAL DETONADORA) █████")
+
+-- Cancela qualquer instância fantasma se o executor suportar
+if _G.FruitSniperLoop then
+    _G.FruitSniperLoop = false
+    print("[SISTEMA] Instância antiga desativada com sucesso.")
+    task.wait(1)
+end
+
+_G.FruitSniperLoop = true
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local RunService = game:GetService("RunService")
 
@@ -29,7 +37,7 @@ local function findMythicalFruit()
 	for _, instance in ipairs(Workspace:GetDescendants()) do
 		if instance:IsA("Model") and string.find(instance.Name, "Fruit") then
 			if isMythicalFruit(instance.Name) then
-				print("[SUCESSO] Fruta mítica localizada: " .. instance.Name)
+				print("[SUCESSO INTERNO] Fruta mítica localizada: " .. instance.Name)
 				return instance
 			end
 		end
@@ -67,7 +75,7 @@ local function moveTo(targetPosition)
 end
 
 local function storeFruit()
-	print("[SISTEMA] Guardando fruta no inventário...")
+	print("[BAÚ] Movendo item coletado para o inventário...")
 	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
 	local storeRemote = remotes and remotes:FindFirstChild("CommF_")
 	
@@ -75,83 +83,56 @@ local function storeFruit()
 		local tool = player.Character:FindFirstChildWhichIsA("Tool")
 		if tool then
 			storeRemote:InvokeServer("StoreFruit", tool.Name)
-			print("[SISTEMA] Fruta armazenada!")
+			print("[BAÚ] Armazenado.")
 		else
 			local backpackFruit = player.Backpack:FindFirstChildWhichIsA("Tool")
 			if backpackFruit and string.find(backpackFruit.Name, "Fruit") then
 				backpackFruit.Parent = player.Character
 				task.wait(0.5)
 				storeRemote:InvokeServer("StoreFruit", backpackFruit.Name)
-				print("[SISTEMA] Fruta armazenada!")
+				print("[BAÚ] Armazenado da Mochila.")
 			end
 		end
 	end
 end
 
--- Novo Sistema de Server Hop via API Oficial decodificada por Executor
-local function serverHop()
-	print("[SISTEMA] Escaneando a lista oficial de servidores públicos do Roblox...")
+-- Mecanismo Forçado Nativo (À prova de erros de API externa)
+local function forceServerHop()
+	print("[TELEPORTE] Forçando inicialização do TeleportService...")
 	
-	local requestMethod = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request)
-	if not requestMethod then
-		print("[ERRO] Seu executor não suporta requisições HTTP básicas.")
-		return
-	end
+	local teleportOptions = Instance.new("TeleportOptions")
+	teleportOptions.ServerBindingMode = Enum.ServerBindingMode.PublicServers
 	
-	-- API Oficial do Roblox (sem proxy intermediário que costuma cair)
-	local url = "https://roblox.com" .. tostring(placeId) .. "/servers/Public?sortOrder=Desc&limit=100"
-	
-	local success, response = pcall(function()
-		return requestMethod({ Url = url, Method = "GET" })
+	-- Método Principal Assíncrono Roblox
+	local success, _ = pcall(function()
+		TeleportService:TeleportAsync(placeId, {player}, teleportOptions)
 	end)
 	
-	if success and response and response.Body then
-		local data = HttpService:JSONDecode(response.Body)
-		if data and data.data then
-			local validServers = {}
-			
-			for _, server in ipairs(data.data) do
-				-- Filtra para NÃO pegar o seu próprio servidor e verificar se há vagas livres
-				if tostring(server.id) ~= tostring(game.JobId) and (server.playing or 0) < (server.maxPlayers or 12) then
-					table.insert(validServers, server.id)
-				end
-			end
-			
-			if #validServers > 0 then
-				-- Escolhe um servidor aleatório da lista válida para evitar tentar entrar no mesmo toda hora
-				local randomServerId = validServers[math.random(1, #validServers)]
-				print("[TELEPORTE] Servidor encontrado com sucesso! Conectando...")
-				
-				-- Executa o teleporte forçado via ID de instância externa
-				TeleportService:TeleportToPlaceInstance(placeId, randomServerId, player)
-				return
-			end
-		end
+	-- Método de Emergência Se o primário falhar ou sofrer throttling
+	if not success then
+		print("[TELEPORTE] Acionando canal secundário direto...")
+		pcall(function()
+			TeleportService:Teleport(placeId, player)
+		end)
 	end
-	
-	-- Fallback ultra-básico caso a listagem falhe por completo
-	print("[AVISO] Falha ao ler lista detalhada. Forçando teleporte básico randômico...")
-	pcall(function()
-		TeleportService:Teleport(placeId, player)
-	end)
 end
 
-print("Script carregado! Verificação iniciada.")
+print("[START] Novo monitor ativo e desvinculado de APIs externas.")
 
 task.spawn(function()
-	while true do
+	while _G.FruitSniperLoop do
 		local fruit = findMythicalFruit()
 		
 		if fruit then
 			local part = fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
 			if part then
-				print("[AÇÃO] Fruta mítica na área! Coletando...")
+				print("[ALERTA] Rota traçada até a fruta!")
 				moveTo(part.Position)
 				task.wait(1)
 				
 				if firetouchinterest then
 					firetouchinterest(player.Character.HumanoidRootPart, part, 0)
-					task.wait(0.5)
+					task.wait(0.3)
 					firetouchinterest(player.Character.HumanoidRootPart, part, 1)
 				end
 				
@@ -160,10 +141,10 @@ task.spawn(function()
 				task.wait(2)
 			end
 		else
-			print("[SCANNER] Sem frutas míticas neste servidor. Mudando de mapa agora...")
-			serverHop()
-			task.wait(7) -- Tempo de segurança para a engine processar a troca de mapa
+			print("[SISTEMA-V4] Servidor limpo. Realizando Server Hop nativo direto...")
+			forceServerHop()
+			task.wait(8) -- Janela de segurança para congelamento da engine antes de deslogar
 		end
-		task.wait(2)
+		task.wait(3)
 	end
 end)
