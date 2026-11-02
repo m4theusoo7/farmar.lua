@@ -5,8 +5,15 @@ local player = Players.LocalPlayer
 repeat task.wait() until game:IsLoaded()
 
 local function createESP(fruit)
-	-- Procura a parte principal da fruta (Handle, PrimaryPart ou BasePart)
-	local part = fruit:FindFirstChild("Handle") or fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
+	-- Previne erros ao tentar ler PrimaryPart de objetos que não são Models
+	local part = fruit:FindFirstChild("Handle")
+	if not part and fruit:IsA("Model") then
+		part = fruit.PrimaryPart
+	end
+	if not part then
+		part = fruit:FindFirstChildWhichIsA("BasePart")
+	end
+	
 	if not part then return end
 	if part:FindFirstChild("FruitESP") then return end
 
@@ -33,7 +40,7 @@ local function createESP(fruit)
 	text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
 	task.spawn(function()
-		-- Mantém a ESP apenas enquanto a fruta estiver no chão (se for apanhada, apaga)
+		-- Mantém a ESP apenas enquanto a fruta estiver no chão
 		while part and part.Parent and part.Parent.Parent ~= player.Character do
 			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 				local dist = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
@@ -47,9 +54,8 @@ end
 
 local function scanFruits()
 	for _, v in ipairs(Workspace:GetDescendants()) do
-		-- Verifica se o nome contém "Fruit" (Ignorando se é Model ou Tool)
-		if string.find(v.Name, "Fruit") then
-			-- Garante que não é um NPC (Vendedor/Dealer)
+		-- Só verifica se for um Model ou Tool, ignorando Pastas (Folders)
+		if (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
 			if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
 				createESP(v)
 			end
@@ -63,7 +69,7 @@ scanFruits()
 -- 2. Fica a observar caso nasçam frutas novas ou alguém deixe cair uma
 Workspace.DescendantAdded:Connect(function(v)
 	task.wait(0.5) -- Aguarda a fruta carregar totalmente
-	if v and v.Parent and string.find(v.Name, "Fruit") then
+	if v and v.Parent and (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
 		if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
 			createESP(v)
 		end
