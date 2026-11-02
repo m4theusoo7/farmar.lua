@@ -1,77 +1,93 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+
 local player = Players.LocalPlayer
 
 repeat task.wait() until game:IsLoaded()
 
+local function isValidFruit(obj)
+	-- Evita o erro de "Folder" garantindo que é apenas Model ou Tool
+	if not (obj:IsA("Model") or obj:IsA("Tool")) then return false end
+	
+	-- Verifica se o nome contém "Fruit"
+	if not string.find(string.lower(obj.Name), "fruit") then return false end
+	
+	-- Bloqueia Vendedores de Fruta e outros NPCs (Eles sempre têm um Humanoid)
+	if obj:FindFirstChildWhichIsA("Humanoid") then return false end
+	if string.find(string.lower(obj.Name), "dealer") then return false end
+	
+	return true
+end
+
 local function createESP(fruit)
-	-- Previne erros ao tentar ler PrimaryPart de objetos que não são Models
-	local part = fruit:FindFirstChild("Handle")
-	if not part and fruit:IsA("Model") then
+	local part = fruit:FindFirstChild("Handle") or fruit:FindFirstChildWhichIsA("BasePart")
+	if fruit:IsA("Model") and not part then
 		part = fruit.PrimaryPart
-	end
-	if not part then
-		part = fruit:FindFirstChildWhichIsA("BasePart")
 	end
 	
 	if not part then return end
-	if part:FindFirstChild("FruitESP") then return end
+	if part:FindFirstChild("FruitESPMarker") then return end
+
+	-- Marca a parte para não duplicar a ESP
+	local marker = Instance.new("BoolValue")
+	marker.Name = "FruitESPMarker"
+	marker.Parent = part
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "FruitESP"
 	billboard.Adornee = part
 	billboard.Size = UDim2.new(0, 200, 0, 50)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
 	billboard.AlwaysOnTop = true
 	
-	pcall(function() billboard.Parent = game:GetService("CoreGui") end)
-	if billboard.Parent ~= game:GetService("CoreGui") then
-		billboard.Parent = part
-	end
+	-- Tenta esconder na CoreGui para segurança contra o Anti-Cheat
+	local success = pcall(function() billboard.Parent = CoreGui end)
+	if not success then billboard.Parent = part end
 
 	local text = Instance.new("TextLabel")
 	text.Parent = billboard
 	text.BackgroundTransparency = 1
 	text.Size = UDim2.new(1, 0, 1, 0)
 	text.Font = Enum.Font.Code
-	text.TextSize = 18
-	text.TextColor3 = Color3.fromRGB(0, 255, 0)
+	text.TextSize = 16
+	text.TextColor3 = Color3.fromRGB(0, 255, 127) -- Verde claro chamativo
 	text.TextStrokeTransparency = 0
 	text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
-	task.spawn(function()
-		-- Mantém a ESP apenas enquanto a fruta estiver no chão
-		while part and part.Parent and part.Parent.Parent ~= player.Character do
-			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local dist = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
-				text.Text = string.format("%s\n[ %d m ]", fruit.Name, math.floor(dist))
-			end
-			task.wait(0.1)
+	-- Usa o Heartbeat para atualizar a distância sem causar lag
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		-- Se a fruta for apanhada ou sumir, destroi a ESP e cancela a atualização
+		if not part or not part.Parent or part.Parent.Parent == player.Character or part.Parent.Parent == game.Players.LocalPlayer:FindFirstChild("Backpack") then
+			if billboard then billboard:Destroy() end
+			if connection then connection:Disconnect() end
+			return
 		end
-		if billboard then billboard:Destroy() end
+		
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
+			text.Text = string.format("%s\n[ %d m ]", fruit.Name, math.floor(dist))
+		end
 	end)
 end
 
 local function scanFruits()
-	for _, v in ipairs(Workspace:GetDescendants()) do
-		-- Só verifica se for um Model ou Tool, ignorando Pastas (Folders)
-		if (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
-			if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
-				createESP(v)
-			end
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if isValidFruit(obj) then
+			createESP(obj)
 		end
 	end
 end
 
--- 1. Escaneia o mapa ao entrar no jogo
+-- 1. Verifica tudo assim que entra no servidor
 scanFruits()
 
--- 2. Fica a observar caso nasçam frutas novas ou alguém deixe cair uma
-Workspace.DescendantAdded:Connect(function(v)
-	task.wait(0.5) -- Aguarda a fruta carregar totalmente
-	if v and v.Parent and (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
-		if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
-			createESP(v)
-		end
+-- 2. Fica monitorando se alguma fruta nova spawnar no mapa
+Workspace.DescendantAdded:Connect(function(obj)
+	task.wait(1) -- Aguarda 1 segundo para a fruta carregar todas as suas partes físicas
+	if isValidFruit(obj) then
+		createESP(obj)
 	end
 end)
