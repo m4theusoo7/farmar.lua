@@ -1,13 +1,3 @@
-Aqui está o script completo que faz exatamente isso. Ele junta o sistema de **Server Hop** otimizado para o Delta com um **Sistema de ESP**.
-
-Assim que você executar o script, ele vai verificar o mapa inteiro:
-
-* **Se tiver fruta:** Ele cria um texto (ESP) verde e brilhante em cima da fruta, mostrando o nome dela e a que distância exata ela está de si.
-* **Se não tiver fruta:** Ele avisa na consola e muda de servidor automaticamente.
-
-Pode colar diretamente no executor:
-
-```lua
 print("███ VERIFICADOR DE FRUTAS + ESP + HOP ███")
 
 local Players = game:GetService("Players")
@@ -153,5 +143,3 @@ else
 	-- Se não tiver fruta nenhuma ao entrar, muda logo de server
 	serverHop()
 end
-
-```
