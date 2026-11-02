@@ -1,8 +1,9 @@
-print("████ FRUIT SNIPER INICIADO (V3 - NATIVO) █████")
+print("████ FRUIT SNIPER INICIADO (VERSÃO LITE V2) █████")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local RunService = game:GetService("RunService")
 
@@ -14,21 +15,26 @@ local MYTHICAL_FRUITS = {
 	"shadow", "gravity", "mammoth", "trex"
 }
 
-local function isMythicalFruit(name)
+local function normalizeFruitName(name)
 	local normalized = string.lower(name or "")
+	normalized = string.gsub(normalized, "%s", "")
+	normalized = string.gsub(normalized, "fruit", "")
+	return normalized
+end
+
+local function isMythicalFruit(name)
+	local normalized = normalizeFruitName(name)
 	for _, mythical in ipairs(MYTHICAL_FRUITS) do
-		if string.find(normalized, mythical) then 
-			return true 
-		end
+		if normalized == mythical then return true end
 	end
 	return false
 end
 
 local function findMythicalFruit()
 	for _, instance in ipairs(Workspace:GetDescendants()) do
-		if instance:IsA("Model") and string.find(instance.Name, "Fruit") then
+		if instance:IsA("Model") and instance.Name:find("Fruit", 1, true) then
 			if isMythicalFruit(instance.Name) then
-				print("[SUCESSO] Fruta mítica localizada: " .. instance.Name)
+				print("Fruit Sniper: Fruta mítica detetada -> " .. instance.Name)
 				return instance
 			end
 		end
@@ -43,16 +49,14 @@ local function moveTo(targetPosition)
 	local root = char.HumanoidRootPart
 	
 	local distance = (root.Position - targetPosition).Magnitude
-	local tweenTime = distance / 250 
+	local tweenTime = distance / 250 -- Velocidade segura para não ser expulso
 	
 	local tween = TweenService:Create(root, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPosition)})
 	
 	if noclipConnection then noclipConnection:Disconnect() end
 	noclipConnection = RunService.Stepped:Connect(function()
-		if char then
-			for _, p in ipairs(char:GetDescendants()) do
-				if p:IsA("BasePart") then p.CanCollide = false end
-			end
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") then p.CanCollide = false end
 		end
 	end)
 	
@@ -65,79 +69,64 @@ local function moveTo(targetPosition)
 	end
 end
 
-local function storeFruit()
-	print("[SISTEMA] Guardando fruta no inventário...")
-	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-	local storeRemote = remotes and remotes:FindFirstChild("CommF_")
-	
-	if storeRemote then
-		local tool = player.Character:FindFirstChildWhichIsA("Tool")
-		if tool then
-			storeRemote:InvokeServer("StoreFruit", tool.Name)
-			print("[SISTEMA] Fruta armazenada!")
-		else
-			print("[AVISO] Equipando fruta para armazenar...")
-			local backpackFruit = player.Backpack:FindFirstChildWhichIsA("Tool")
-			if backpackFruit and string.find(backpackFruit.Name, "Fruit") then
-				backpackFruit.Parent = player.Character
-				task.wait(0.5)
-				storeRemote:InvokeServer("StoreFruit", backpackFruit.Name)
-				print("[SISTEMA] Fruta armazenada!")
-			end
-		end
-	end
-end
-
--- Server Hop Nativo e à prova de falhas
 local function serverHop()
-	print("[TELEPORTE] Procurando novo servidor público automaticamente...")
-	local teleportOptions = Instance.new("TeleportOptions")
-	teleportOptions.ServerBindingMode = Enum.ServerBindingMode.PublicServers
+	-- API oficial do Roblox (sem usar o proxy antigo que estava a falhar)
+	local url = "https://games.roblox.com/v1/games/" .. tostring(placeId) .. "/servers/Public?sortOrder=Asc&limit=100"
 	
-	local success, err = pcall(function()
-		TeleportService:TeleportAsync(placeId, {player}, teleportOptions)
-	end)
-	
-	if not success then
-		print("[ERRO] Falha no teleporte nativo, tentando método de emergência: " .. tostring(err))
-		-- Método alternativo caso o principal falhe
-		pcall(function()
-			TeleportService:Teleport(placeId, player)
-		end)
+	-- Deteta e usa a função nativa de requisições do executor (muito mais forte que o HttpGet normal)
+	local requestFunc = syn and syn.request or http and http.request or http_request or fluxus and fluxus.request or request or function(options)
+		local success, response = pcall(function() return game:HttpGet(options.Url) end)
+		if success then return {Body = response} else return nil end
 	end
+
+	print("Fruit Sniper: A procurar novos servidores...")
+	
+	local success, response = pcall(function()
+		return requestFunc({
+			Url = url,
+			Method = "GET"
+		})
+	end)
+
+	if success and response and response.Body then
+		local dataSuccess, data = pcall(function()
+			return HttpService:JSONDecode(response.Body)
+		end)
+		
+		if dataSuccess and data and data.data then
+			for _, server in ipairs(data.data) do
+				if type(server) == "table" and server.id ~= game.JobId then
+					local playingCount = server.playing or 0
+					local maxPlayers = server.maxPlayers or 12
+					
+					if playingCount < maxPlayers then
+						print("Fruit Sniper: A teleportar para o servidor -> " .. tostring(server.id))
+						TeleportService:TeleportToPlaceInstance(placeId, server.id, player)
+						return
+					end
+				end
+			end
+		end
+	end
+	
+	print("Fruit Sniper: Nenhum servidor encontrado ou falha na API. A tentar novamente em breve...")
 end
 
-print("Script carregado! Monitoramento de frutas iniciado.")
+print("Fruit Sniper: Script carregado! À espera para iniciar a busca...")
 
-task.spawn(function()
-	while true do
-		print("[SCANNER] Procurando frutas míticas no servidor...")
-		local fruit = findMythicalFruit()
-		
-		if fruit then
-			local part = fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
-			if part then
-				print("[AÇÃO] Fruta mítica encontrada! Voando até ela...")
-				moveTo(part.Position)
-				task.wait(1)
-				
-				-- Coleta física (Simula o clique/toque na fruta)
-				if firetouchinterest then
-					firetouchinterest(player.Character.HumanoidRootPart, part, 0)
-					task.wait(0.5)
-					firetouchinterest(player.Character.HumanoidRootPart, part, 1)
-				end
-				
-				task.wait(1)
-				storeFruit()
-				task.wait(2)
-			end
-		else
-			print("[SCANNER] Nenhuma fruta mítica aqui. Trocando de servidor em 3 segundos...")
-			task.wait(3)
-			serverHop()
-			task.wait(10) -- Aguarda a tela de carregamento do Roblox
+while task.wait(3) do
+	local fruit = findMythicalFruit()
+	if fruit then
+		local part = fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
+		if part then
+			print("Fruit Sniper: A voar até à fruta...")
+			moveTo(part.Position)
+			task.wait(2)
 		end
-		task.wait(2)
+	else
+		print("Fruit Sniper: Nenhuma fruta mítica no mapa. A iniciar Server Hop em 3s...")
+		task.wait(3)
+		serverHop()
+		task.wait(10) -- Espera 10 segundos para dar tempo ao jogo de iniciar o teleporte
 	end
-end)
+end
