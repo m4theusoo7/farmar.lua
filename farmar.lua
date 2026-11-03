@@ -1,71 +1,110 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
 repeat task.wait() until game:IsLoaded()
 
-local function criarESP(fruta)
-	-- Identifica a parte física da fruta
-	local part = fruta:FindFirstChild("Handle") or fruta.PrimaryPart or fruta:FindFirstChildWhichIsA("BasePart")
-	if not part then return end
+local requestFunc = syn and syn.request or http and http.request or http_request or fluxus and fluxus.request or request
+local noclipConnection
 
-	-- Evita duplicar a ESP
-	if part:FindFirstChild("FruitESP") then return end
-
-	-- Cria o texto flutuante preso diretamente à fruta
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "FruitESP"
-	billboard.Parent = part
-	billboard.Adornee = part
-	billboard.Size = UDim2.new(0, 200, 0, 50)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
-	billboard.AlwaysOnTop = true
-
-	local text = Instance.new("TextLabel")
-	text.Parent = billboard
-	text.BackgroundTransparency = 1
-	text.Size = UDim2.new(1, 0, 1, 0)
-	text.Font = Enum.Font.Code
-	text.TextSize = 18
-	text.TextColor3 = Color3.fromRGB(0, 255, 0)
-	text.TextStrokeTransparency = 0
-	text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-
-	-- Loop independente para atualizar a distância a cada meio segundo
-	task.spawn(function()
-		while part and part.Parent and part.Parent.Parent ~= player.Character do
-			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local dist = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
-				text.Text = string.format("%s\n[ %d m ]", fruta.Name, math.floor(dist))
+local function getFruit()
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
+			if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
+				return v
 			end
-			task.wait(0.5) -- Pausa maior para não travar o executor Delta
 		end
-		if billboard then billboard:Destroy() end
-	end)
-end
-
-local function verificarFruta(obj)
-	-- Filtra objetos irrelevantes imediatamente
-	if not (obj:IsA("Model") or obj:IsA("Tool")) then return end
-	if not string.find(string.lower(obj.Name), "fruit") then return end
-	
-	-- Ignora o NPC Vendedor de Frutas
-	if obj:FindFirstChildOfClass("Humanoid") or string.find(string.lower(obj.Name), "dealer") then return end
-	
-	criarESP(obj)
-end
-
--- 1. Verifica todas as partes do mapa assim que inicia
-for _, obj in ipairs(Workspace:GetDescendants()) do
-	verificarFruta(obj)
-end
-
--- 2. Monitoriza ativamente caso nasça uma fruta nova
-Workspace.DescendantAdded:Connect(function(obj)
-	task.wait(1) -- Dá tempo para o servidor renderizar a fruta física
-	if obj and obj.Parent then
-		verificarFruta(obj)
 	end
-end)
+	return nil
+end
 
-print("Sistema de ESP de Frutas ativado com sucesso!")
+local function tweenTo(targetPos)
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	local root = char.HumanoidRootPart
+	
+	local distance = (root.Position - targetPos).Magnitude
+	local speed = 250 -- Velocidade segura para evitar ser "kickado"
+	local timeToTravel = distance / speed
+	
+	local tweenInfo = TweenInfo.new(timeToTravel, Enum.EasingStyle.Linear)
+	local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
+	
+	-- Ativa o Noclip (atravessar paredes) durante o voo
+	if noclipConnection then noclipConnection:Disconnect() end
+	noclipConnection = RunService.Stepped:Connect(function()
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") then p.CanCollide = false end
+		end
+	end)
+	
+	tween:Play()
+	tween.Completed:Wait()
+	
+	-- Desativa o Noclip ao chegar
+	if noclipConnection then
+		noclipConnection:Disconnect()
+		noclipConnection = nil
+	end
+end
+
+local function serverHop()
+	if not requestFunc then
+		print("Erro: O seu executor não suporta a função de Server Hop.")
+		return
+	end
+	
+	print("A iniciar Server Hop...")
+	local url = "https://games.roblox.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
+	
+	local success, response = pcall(function() return requestFunc({Url = url, Method = "GET"}) end)
+	
+	if success and response and response.Body then
+		local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+		if dataSuccess and data and data.data then
+			for _, server in ipairs(data.data) do
+				if type(server) == "table" and server.id ~= game.JobId then
+					local playing = server.playing or 0
+					local max = server.maxPlayers or 12
+					if playing < max then
+						print("A teleportar para um novo servidor...")
+						TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+						return
+					end
+				end
+			end
+		end
+	end
+	
+	print("Falha ao encontrar servidor. A tentar novamente em 5 segundos...")
+	task.wait(5)
+	serverHop()
+end
+
+local function autoFarmFruit()
+	print("A procurar frutas no servidor...")
+	local fruit = getFruit()
+	
+	if fruit then
+		local part = fruit:FindFirstChild("Handle") or fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
+		if part then
+			print("Fruta encontrada (" .. fruit.Name .. ")! A voar até ela...")
+			-- Fica um pouco acima da fruta para coletar em segurança
+			tweenTo(part.Position)
+			task.wait(2) -- Aguarda 2 segundos para o jogo registar a coleta
+			
+			-- Procura novamente para ver se há mais frutas ou se muda de servidor
+			autoFarmFruit()
+		end
+	else
+		print("Nenhuma fruta no mapa. A procurar noutro servidor...")
+		serverHop()
+	end
+end
+
+-- Inicia a automação
+autoFarmFruit()
