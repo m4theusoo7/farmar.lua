@@ -11,10 +11,47 @@ repeat task.wait() until game:IsLoaded()
 local requestFunc = syn and syn.request or http and http.request or http_request or fluxus and fluxus.request or request
 local noclipConnection
 
+local function criarESP(fruta, part)
+	if part:FindFirstChild("FruitESP") then return end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "FruitESP"
+	billboard.Parent = part
+	billboard.Adornee = part
+	billboard.Size = UDim2.new(0, 200, 0, 50)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+
+	local text = Instance.new("TextLabel")
+	text.Parent = billboard
+	text.BackgroundTransparency = 1
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.Font = Enum.Font.Code
+	text.TextSize = 18
+	text.TextColor3 = Color3.fromRGB(0, 255, 0)
+	text.TextStrokeTransparency = 0
+	text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+	task.spawn(function()
+		while part and part.Parent and part.Parent.Parent ~= player.Character do
+			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+				local dist = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
+				text.Text = string.format("%s\n[ %d m ]", fruta.Name, math.floor(dist))
+			end
+			task.wait(0.1)
+		end
+		if billboard then billboard:Destroy() end
+	end)
+end
+
 local function getFruit()
 	for _, v in ipairs(Workspace:GetDescendants()) do
 		if (v:IsA("Model") or v:IsA("Tool")) and string.find(v.Name, "Fruit") then
 			if not v:FindFirstChildOfClass("Humanoid") and not string.find(string.lower(v.Name), "dealer") then
+				local part = v:FindFirstChild("Handle") or v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+				if part then
+					criarESP(v, part)
+				end
 				return v
 			end
 		end
@@ -28,13 +65,18 @@ local function tweenTo(targetPos)
 	local root = char.HumanoidRootPart
 	
 	local distance = (root.Position - targetPos).Magnitude
-	local speed = 250 -- Velocidade segura para evitar ser "kickado"
+	local speed = 250 
 	local timeToTravel = distance / speed
+	
+	-- Corrige o bug de movimentação (gravidade/tremedeira) usando BodyVelocity
+	local antiGravity = Instance.new("BodyVelocity")
+	antiGravity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	antiGravity.Velocity = Vector3.zero
+	antiGravity.Parent = root
 	
 	local tweenInfo = TweenInfo.new(timeToTravel, Enum.EasingStyle.Linear)
 	local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
 	
-	-- Ativa o Noclip (atravessar paredes) durante o voo
 	if noclipConnection then noclipConnection:Disconnect() end
 	noclipConnection = RunService.Stepped:Connect(function()
 		for _, p in ipairs(char:GetDescendants()) do
@@ -45,10 +87,12 @@ local function tweenTo(targetPos)
 	tween:Play()
 	tween.Completed:Wait()
 	
-	-- Desativa o Noclip ao chegar
 	if noclipConnection then
 		noclipConnection:Disconnect()
 		noclipConnection = nil
+	end
+	if antiGravity then
+		antiGravity:Destroy()
 	end
 end
 
@@ -93,11 +137,10 @@ local function autoFarmFruit()
 		local part = fruit:FindFirstChild("Handle") or fruit.PrimaryPart or fruit:FindFirstChildWhichIsA("BasePart")
 		if part then
 			print("Fruta encontrada (" .. fruit.Name .. ")! A voar até ela...")
-			-- Fica um pouco acima da fruta para coletar em segurança
-			tweenTo(part.Position)
-			task.wait(2) -- Aguarda 2 segundos para o jogo registar a coleta
+			-- Fica um pouco acima da fruta para coletar em segurança e evitar prender no chão
+			tweenTo(part.Position + Vector3.new(0, 2, 0))
+			task.wait(2)
 			
-			-- Procura novamente para ver se há mais frutas ou se muda de servidor
 			autoFarmFruit()
 		end
 	else
@@ -106,5 +149,4 @@ local function autoFarmFruit()
 	end
 end
 
--- Inicia a automação
 autoFarmFruit()
